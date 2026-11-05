@@ -2,6 +2,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [issues-and-roadmap.md](issues-and-roadmap.md) | 当前问题、开发优先级、验收标准与试点效果跟踪 |
 | [architecture.md](architecture.md) | 整体架构、设计目标、目录结构、分类学、生命周期、工作流、治理约定 |
 | [note-spec.md](note-spec.md) | 笔记格式规范 + frontmatter 字段契约（人读版） |
 | [agent-integration.md](agent-integration.md) | 未来 DSH 插件 / 智能体读取本库作为知识库的设计 |
