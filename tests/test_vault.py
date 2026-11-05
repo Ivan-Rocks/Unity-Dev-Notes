@@ -198,6 +198,28 @@ Write-Output 'PR_CONTRACT_PASS'
         self.assertIn('PR_PENDING', result.stdout)
         self.assertNotIn('PENDING_REVIEW', result.stdout)
 
+    def test_rest_empty_array_is_not_an_existing_pr(self):
+        test = self.work / 'rest-array.ps1'
+        test.write_text(r'''
+$ErrorActionPreference = 'Stop'
+. '__SCRIPT__'
+$script:returnOne = $false
+function Invoke-RestMethod {
+ param($Uri,$Headers,$Method,$TimeoutSec,$ErrorAction,$ContentType,$Body)
+ if ($script:returnOne) { Write-Output -NoEnumerate @(@{html_url='https://github.com/example/vault/pull/1';state='open'}) }
+ else { Write-Output -NoEnumerate @() }
+}
+$items = @(Invoke-VaultApi -Path '/repos/example/vault/pulls' -Headers @{})
+if ($items.Count -ne 0) { throw 'An empty REST array was treated as an existing PR' }
+$script:returnOne = $true
+$items = @(Invoke-VaultApi -Path '/repos/example/vault/pulls' -Headers @{})
+if ($items.Count -ne 1 -or $items[0].html_url -notmatch '/pull/1$') { throw 'A singleton REST array was not normalized' }
+Write-Output 'REST_ARRAY_PASS'
+'''.replace('__SCRIPT__', str(self.repo / 'tools/vault.ps1')), encoding='utf-8')
+        result = subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(test)], capture_output=True, text=True, encoding='utf-8', errors='replace')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('REST_ARRAY_PASS', result.stdout)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

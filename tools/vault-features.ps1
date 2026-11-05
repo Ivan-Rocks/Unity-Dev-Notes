@@ -69,7 +69,12 @@ function Invoke-VaultApi {
   }
   try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-    Invoke-RestMethod @request
+    $response = Invoke-RestMethod @request
+    # Invoke-RestMethod can emit a JSON array as one pipeline object, including [].
+    # Normalize it here so an empty PR list is not mistaken for one existing PR.
+    if ($response -is [array]) {
+      foreach ($entry in $response) { Write-Output $entry }
+    } elseif ($null -ne $response) { Write-Output $response }
   } catch {
     $code = 'network/authentication error'
     if ($_.Exception.Response) { $code = "HTTP $([int]$_.Exception.Response.StatusCode)" }
