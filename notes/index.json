@@ -12,6 +12,16 @@
       "summary": "Unity CLI 是 Unity 官方推出的独立命令行工具，可在不装 Unity Hub 的情况下从终端安装 Editor、增删模块、创建/打开项目，适合 CI 与自动化。Windows 用一条 PowerShell 命令安装，装完 `unity --version` 验证即可。"
     },
     {
+      "id": "2026-11-05-unity-mcp-localhost-ipv6",
+      "path": "bugs/2026-11-05-unity-mcp-localhost-ipv6.md",
+      "title": "Unity MCP 显示在线但客户端连接被拒：检查 IPv4 与 IPv6 回环地址",
+      "category": "bugs",
+      "status": "draft",
+      "tags": ["unity", "mcp", "windows", "ipv6", "connection"],
+      "updated": "'2026-11-05'",
+      "summary": "在本次 Windows 11、Unity 2022.3.62f3 与 MCP Unity 1.4.0 环境中，网桥显示在线，但连接 `127.0.0.1:8090` 被拒。 实际监听地址为 IPv6 回环地址 `::1`；将客户端 `UNITY_HOST` 改为 `localhost` 后连接成功。 适用于端口正确、服务在线但 IPv4 连接失败的排查，不代表所有 Windows 环境都会出现。"
+    },
+    {
       "id": "2026-11-05-unity-transform",
       "path": "knowledge/2026-11-05-unity-transform.md",
       "title": "Unity 中设置物体的 Transform",
