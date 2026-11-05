@@ -8,6 +8,7 @@ BNU 实验室的 Unity 开发知识库（Knowledge Vault）。用「笔记 + 契
 - `notes/` — Unity 开发笔记本体（知识库），按类别（category）分目录
 - `docs/templates/` — 笔记模板（bug / knowledge / how-to / snippet）
 - `tools/vault.ps1` — git 自动化（sync / index / validate / post）
+- `skills/` — 给 DSH / agent 的技能（`posting-vault-notes`），分发来源
 
 ## 快速开始：用 DSH 生成一篇笔记
 
@@ -35,6 +36,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/vault.ps1 sync
 
 ## 规范入口
 
+- 新同学上手（5 分钟，非技术向）→ [docs/onboarding.md](docs/onboarding.md)
+- 管理员手册 → [docs/admin.md](docs/admin.md)
 - 总架构与设计决策 → [docs/architecture.md](docs/architecture.md)
 - 笔记格式与 frontmatter 契约（人读版）→ [docs/note-spec.md](docs/note-spec.md)
 - 未来智能体 / DSH 插件集成设计 → [docs/agent-integration.md](docs/agent-integration.md)
