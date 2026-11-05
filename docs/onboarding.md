@@ -1,53 +1,59 @@
-# 新同学上手（只做一次，约 5 分钟）
+# 新同学上手：先查经验，再决定是否发笔记
 
-> 这篇给「只想记笔记、不想碰代码」的同学。全程**复制粘贴**，遇到要填的地方换成你自己的名字/邮箱。
+## 只想查报错
 
-## 一次性安装
+双击仓库里的 **search-notes.cmd**，粘贴一行报错或关键词。也可以在 DSH 里说：
 
-### ① 装 git（一句带过，不用学）
+> 帮我查这段报错有没有相关笔记，同时告诉我适用的 Unity 版本、管线和验证情况。
 
-去 <https://git-scm.com> 下载，一路「下一步」装完。你只需要它存在，不需要会用。
+无需配置 Git 提交者或授权上传即可本地搜索。默认只显示已审核笔记，草稿需要主动加入搜索；没有命中时尝试更少的关键词。
 
-### ② 打开 PowerShell
+## 准备贡献笔记：一次性设置
 
-按键盘 `Win` 键 → 输入 `powershell` → 回车，会弹出一个黑色窗口。
-
-### ③ 复制下面 4 行，一行一行粘贴回车
+1. 安装 [Git](https://git-scm.com/downloads)，然后将仓库克隆到你选择的位置；已经有本地仓库则跳过下载。
+2. 在仓库目录运行一次：
 
 ```powershell
-git clone https://github.com/Ivan-Rocks/Unity-Dev-Notes.git "$env:USERPROFILE\Unity-Dev-Notes"
-
-git config --global user.name "你的名字"
-git config --global user.email "你的邮箱"
-
-git config --global credential.helper manager
-
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.agents\skills\posting-vault-notes" | Out-Null; Copy-Item "$env:USERPROFILE\Unity-Dev-Notes\skills\posting-vault-notes\SKILL.md" "$env:USERPROFILE\.agents\skills\posting-vault-notes\SKILL.md" -Force
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/setup.ps1 -UserName "你的署名" -Email "你的 GitHub 隐私邮箱"
 ```
 
-> - `"你的名字"` / `"你的邮箱"` 换成你自己的，例如 `"张三"`、`"zhangsan@163.com"`。
-> - 如果第 1 行提示「目录已存在」，说明你之前装过，跳过这行继续往下。
+设置只作用于当前仓库；技能会安装到本机 agent 技能目录，自动写入当前仓库路径，不要求安装在用户主目录。重新打开 AI 会话后生效。已有技能如有变化会先备份。
 
-### ④ 第一次发布时，授权一次
+3. 双击 **check-environment.cmd** 查看本地环境；准备上传时再运行联网检查：
 
-浏览器会自动弹出，登录你的 GitHub 账号，点「授权」。之后再也不用了。
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/vault.ps1 doctor -Online
+```
 
-✅ **装好了。以后不用再碰这些命令。**
+联网检查会核对本机 Git 登录账号及仓库写入权限。若需要登录，使用 Git Credential Manager 完成浏览器授权；不要把令牌写进笔记。浏览器登录与本机 Git 登录是两回事。
 
-## 以后就这样记笔记
+GitHub 网络不通时，本地搜索和草稿仍然可用；离线检查通过不代表无代理网络或上传权限已经验证。
 
-打开 DSH，直接说人话，例如：
+## 发一篇笔记
 
-> 「帮我把这个 bug 记成笔记：Unity 打包后 Shader 变粉，原因是 Shader 被 Stripping 掉了，解决是加进 Always Included Shaders。」
+对 DSH 说出经历，例如“这个报错原因还没确认，但重启后暂时恢复了，帮我先记下来”。AI 应先查重、展示草稿，再让你选择“发 / 改 / 不发”。原因未知可以如实保留。
 
-DSH 会自动：写好笔记 → 开分支 → 提交 → 给你一个链接。
+确认后执行：
 
-把链接发给管理员（或群里说一声），管理员合并后笔记就正式入库了。
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/vault.ps1 post -File <草稿.md>
+```
 
-## 遇到问题再看
+成功会显示 **PENDING_REVIEW** 和真实 `/pull/数字` 链接，表示等待管理员审核，不代表已经进入主库。
 
-| 看到 | 做 |
-| --- | --- |
-| `git 不是内部或外部命令` | 第 ① 步没装 git，回去装 |
-| push 被拒 / `non-fast-forward` | 在 DSH 里说「帮我同步一下笔记库」 |
-| 提示 `.ps1 禁止运行` | 把命令开头换成 `powershell -ExecutionPolicy Bypass -File ...` |
+如果显示 **PR_PENDING**，说明审核请求尚未完成。留在当前分支重试下面命令，不要重新发同一篇笔记：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/vault.ps1 pr
+```
+
+## 纠错与失效反馈
+
+- 能改正文：让 AI 读取原笔记，保留原 id、category、created，生成 `draft` 修订稿，确认后用 `post -Update -File <修订稿.md>`。
+- 只知道不适用：说明笔记 id、环境、报错及预期；确认内容后用 `feedback -NoteId <id> -Message <反馈>` 创建反馈 issue。先加 `-DryRun` 可预览而不发送。
+
+## 无法运行工具时的备用入口
+
+打开 [GitHub 笔记目录](https://github.com/Ivan-Rocks/Unity-Dev-Notes/tree/main/notes)，在对应类别中按模板添加文件，或打开已有文件编辑。提交时选择**新建分支并创建 Pull Request**，不要直接提交到 main。也可在 [Issues](https://github.com/Ivan-Rocks/Unity-Dev-Notes/issues) 反馈，并附上相关笔记链接。
+
+DSH 的受限 Windows 命令环境可能在脚本启动前失败。此时环境限制不能写成“校验通过”；可由本人在本机 PowerShell 运行同一校验，或使用上述网页入口，不必关闭系统保护。

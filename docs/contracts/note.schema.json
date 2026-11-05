@@ -5,7 +5,14 @@
   "description": "校验 notes/ 下每篇 Markdown 的 YAML frontmatter。自动化工具（DSH 插件、CI）用它做元数据硬校验；正文质量属于人工软校验，不在此约束。",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "title", "category", "status", "created", "updated"],
+  "required": [
+    "id",
+    "title",
+    "category",
+    "status",
+    "created",
+    "updated"
+  ],
   "properties": {
     "id": {
       "type": "string",
@@ -19,17 +26,29 @@
     },
     "category": {
       "type": "string",
-      "enum": ["bugs", "knowledge", "how-to", "snippet"],
+      "enum": [
+        "bugs",
+        "knowledge",
+        "how-to",
+        "snippet"
+      ],
       "description": "主分类，决定笔记所在目录；新增类别需同步改此枚举并补模板"
     },
     "status": {
       "type": "string",
-      "enum": ["draft", "review", "formalized", "deprecated"],
+      "enum": [
+        "draft",
+        "review",
+        "formalized",
+        "deprecated"
+      ],
       "description": "生命周期状态机：draft -> review -> formalized -> deprecated"
     },
     "tags": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "uniqueItems": true,
       "description": "交叉分类标签，小写英文"
     },
@@ -53,7 +72,9 @@
     },
     "related": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "uniqueItems": true,
       "description": "相关笔记的 id 列表"
     },
@@ -62,14 +83,68 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["title", "url"],
+        "required": [
+          "title",
+          "url"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "url": { "type": "string", "format": "uri" },
-          "accessed": { "type": "string", "format": "date" }
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "accessed": {
+            "type": "string",
+            "format": "date"
+          }
         }
       },
       "description": "参考资料，含 title/url/accessed"
+    },
+    "render_pipeline": {
+      "type": "string",
+      "description": "适用渲染管线，如 Built-in、URP、HDRP；未知时省略"
+    },
+    "platform": {
+      "type": "string",
+      "description": "已测试的平台与系统"
+    },
+    "device": {
+      "type": "string",
+      "description": "已测试的设备或硬件"
+    },
+    "prerequisites": {
+      "type": "string",
+      "description": "适用条件、依赖插件与已验证版本，简短字符串"
+    },
+    "verification": {
+      "type": "string",
+      "enum": [
+        "unverified",
+        "reproduced",
+        "verified"
+      ],
+      "description": "unverified 未验证；reproduced 已复现；verified 已按正文验证方式确认解决"
+    },
+    "diagnosis": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "suspected",
+        "confirmed"
+      ],
+      "description": "根因确认程度；未知原因可以记录，不得为填字段编造根因"
+    },
+    "resolution": {
+      "type": "string",
+      "enum": [
+        "unresolved",
+        "workaround",
+        "fixed"
+      ],
+      "description": "未解决 / 临时绕过 / 已修复；独立于审核 status"
     }
   }
 }

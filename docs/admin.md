@@ -46,3 +46,13 @@
 - [ ] 发 onboarding 链接
 - [ ] 确认对方 clone + 认证 +（用 agent 才装技能）
 - [ ] 确认对方能 push 出 `note/<id>` 分支
+
+## 发布状态与技术验证分开审核
+
+- `post` 使用 Git Credential Manager 的本机凭据创建或复用真正的 PR，只有返回 `PENDING_REVIEW` 与 `/pull/<number>` 链接才算提交审核成功。
+- `PR_PENDING` 表示未完成审核请求；上传分支后可在原分支运行 `vault.ps1 pr` 重试，避免重复发布同 id。
+- 新增可选环境与证据字段，旧笔记无需立即迁移；缺失按未知处理。索引新增同名可选字段，旧消费者应忽略未知字段；不要把缺失字段推断为 verified。
+- 对 `diagnosis: unknown` 的现场记录和 `resolution: workaround` 的临时方案仍可审核入库，但需保留限制。`status: formalized` 只表示审核通过，不扩大适用范围。
+- 修订笔记使用 `post -Update`，保留 id/category/created，状态回到 draft；失效反馈创建 issue，由管理员判断，不自动标 deprecated。
+- 管理员修改状态后需再次运行 `vault.ps1 index`，使索引与实际文件一致。搜索读取笔记本体，可避免旧索引漏掉最新修订，但其他索引消费者仍需重建。
+- 默认诊断不发送网络请求；`doctor -Online` 会读取 GitHub 账号和仓库权限。凭据仅在内存中使用，不应出现在输出、仓库或日志中。

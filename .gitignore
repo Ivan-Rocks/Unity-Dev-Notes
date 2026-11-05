@@ -10,6 +10,7 @@ desktop.ini
 
 # Logs
 *.log
+work/
 
 # Unity（若未来把示例工程嵌进本库）
 [Ll]ibrary/
