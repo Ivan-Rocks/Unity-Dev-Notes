@@ -23,10 +23,11 @@ Not for: editing `docs/` contracts, or changes outside `notes/`.
 Prefer the repo script `tools/vault.ps1` over raw git. It bundles sync + branch + index + push in one step.
 
 1. **Write the draft** as a `.md` with frontmatter (`id`, `title`, `category`, `status`, `created`, `updated`, `source`), per `docs/note-spec.md` and a template in `docs/templates/`.
-2. **Validate**: `tools/vault.ps1 validate -File <draft>`
-3. **Post** (sync → id-check → branch → write → regenerate index → commit → push):
+2. **Show the draft and wait for confirmation.** Present the note in chat and ask the user to decide "发 / 改 / 不发". Do NOT run `post` until the user confirms; apply any edits they request first.
+3. **Validate**: `tools/vault.ps1 validate -File <draft>`
+4. **Post** (sync → id-check → branch → write → regenerate index → commit → push):
    `tools/vault.ps1 post -File <draft>`
-4. **Open the PR** from the printed URL. A human sets `status: formalized` before merging.
+5. **Open the PR** from the printed URL. An admin sets `status: formalized` before merging to `main`.
 
 Run `tools/vault.ps1 sync` before ANY manual git work — it fetches and fast-forwards `main`, or rebases a feature branch. This is what makes "forgot to pull" structurally impossible.
 
@@ -45,10 +46,12 @@ Run `tools/vault.ps1 sync` before ANY manual git work — it fetches and fast-fo
 
 ### Invoke the script
 
+The vault repo is installed at `%USERPROFILE%\Unity-Dev-Notes` (the onboarding default). If the current directory already has `notes/` + `docs/` + `.git`, you are inside the vault and may use the relative `tools/vault.ps1`; otherwise use the absolute path below.
+
 Windows PowerShell 5.1 blocks `.ps1` by default (ExecutionPolicy). Bypass per-run — do NOT change the machine policy:
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/vault.ps1 <cmd> -File <draft>
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Unity-Dev-Notes\tools\vault.ps1" <cmd> -File <draft>
 ```
 
 ### Manual fallback (script absent)
