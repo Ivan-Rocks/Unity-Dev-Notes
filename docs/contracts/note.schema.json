@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Ivan-Rocks/Unity-Dev-Notes/blob/main/docs/contracts/note.schema.json",
+  "title": "Unity Dev Note frontmatter",
+  "description": "校验 notes/ 下每篇 Markdown 的 YAML frontmatter。自动化工具（DSH 插件、CI）用它做元数据硬校验；正文质量属于人工软校验，不在此约束。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "category", "status", "created", "updated"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]+$",
+      "description": "唯一标识，等于文件名去掉 .md，如 2026-11-05-install-unity-cli"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "中文标题，一句话"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["bugs", "knowledge", "how-to", "snippet"],
+      "description": "主分类，决定笔记所在目录；新增类别需同步改此枚举并补模板"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "review", "formalized", "deprecated"],
+      "description": "生命周期状态机：draft -> review -> formalized -> deprecated"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "description": "交叉分类标签，小写英文"
+    },
+    "created": {
+      "type": "string",
+      "format": "date",
+      "description": "YYYY-MM-DD"
+    },
+    "updated": {
+      "type": "string",
+      "format": "date",
+      "description": "YYYY-MM-DD，内容实质改动时更新"
+    },
+    "author": {
+      "type": "string",
+      "description": "作者：人名，或 DSH"
+    },
+    "unity_version": {
+      "type": "string",
+      "description": "涉及的 Unity 版本，如 6000.3、2022.3"
+    },
+    "related": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "description": "相关笔记的 id 列表"
+    },
+    "source": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "url"],
+        "properties": {
+          "title": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "accessed": { "type": "string", "format": "date" }
+        }
+      },
+      "description": "参考资料，含 title/url/accessed"
+    }
+  }
+}
