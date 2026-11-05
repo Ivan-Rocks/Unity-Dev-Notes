@@ -15,6 +15,7 @@ A note vault is a git repo of Markdown notes plus a generated `notes/index.json`
 - `git push` rejected: `non-fast-forward` / `src refspec main does not match any` / `failed to push`.
 - A colleague pushed first and you forgot to pull.
 - `notes/index.json` is stale (missing recent notes) and needs regeneration.
+- Local `note/*` branches pile up after merges and need cleanup.
 
 Not for: editing `docs/` contracts, or changes outside `notes/`.
 
@@ -41,6 +42,7 @@ Run `tools/vault.ps1 sync` before ANY manual git work — it fetches and fast-fo
 | `vault.ps1 post -File <draft>` | publish a draft (sync→branch→write→index→commit→push) |
 | `vault.ps1 post -File <draft> -DryRun` | plan only, no side effects |
 | `vault.ps1 post -File <draft> -NoPush` | commit on branch, skip push |
+| `vault.ps1 cleanup` | delete local `note/*` branches merged into origin/main |
 
 ## Implementation
 

@@ -33,6 +33,13 @@
 2. 同步更新 `tools/vault.ps1` 里的 `$Categories` / `$Statuses` 枚举
 3. PR 描述里写明迁移方式
 
+## 分支清理
+
+学生每发一篇笔记会开一个 `note/<id>` 分支；合并后分支不自动删，会越堆越多（学生大概率不会自己清理 git）。
+
+- **远程分支**：GitHub 仓库 → **Settings → General → 勾选 "Automatically delete head branches"**。合并 PR 后远程分支自动删除。
+- **本地分支**：跑 `tools/vault.ps1 cleanup`，删掉所有「已合并进 origin/main」的 `note/*` 本地分支，保留未合并的。建议让学生发笔记前顺手跑一次（或让 DSH 在 post 前自动清）。
+
 ## 交接清单
 
 - [ ] GitHub 加 collaborator（Write）

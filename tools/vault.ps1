@@ -9,6 +9,7 @@
     validate -File <path>    Validate a note's frontmatter.
     post -File <path>        Publish a draft note: sync -> id check -> branch -> write -> index -> commit -> push -> PR URL.
                              Options: -DryRun (plan only), -NoPush (skip push).
+    cleanup                  Delete local note/* branches already merged into origin/main.
 
   Compatible with Windows PowerShell 5.1. Keep script messages ASCII to avoid
   encoding issues; note *content* is read/written as UTF-8.
@@ -19,7 +20,7 @@
   pwsh -File tools/vault.ps1 post -File C:\tmp\my-note.md -DryRun
 #>
 param(
-  [Parameter(Position=0)][ValidateSet('sync','index','validate','post')][string]$Command,
+  [Parameter(Position=0)][ValidateSet('sync','index','validate','post','cleanup')][string]$Command,
   [string]$File,
   [switch]$NoPush,
   [switch]$DryRun
@@ -151,6 +152,37 @@ function Sync-Vault {
   }
 }
 
+function Cleanup-Vault {
+  param([string]$Root)
+  $r = Run-Git $Root @('fetch','origin','--prune')
+  if ($r.Code -ne 0) { throw "fetch failed: $($r.Out)" }
+  $default = Get-DefaultBranch $Root
+  $cur = (Run-Git $Root @('branch','--show-current')).Out.Trim()
+  if ($cur -ne $default) {
+    $r = Run-Git $Root @('checkout',$default)
+    if ($r.Code -ne 0) { throw "checkout $default failed: $($r.Out)" }
+  }
+  $r = Run-Git $Root @('merge','--ff-only',"origin/$default")
+  if ($r.Code -ne 0) { throw "cannot fast-forward ${default}: $($r.Out)" }
+
+  $merged = Run-Git $Root @('branch','--merged',"origin/$default")
+  $toDelete = @()
+  foreach ($line in ($merged.Out -split "`n")) {
+    $name = $line.Trim().TrimStart('*').Trim()
+    if ($name -like 'note/*') { $toDelete += $name }
+  }
+  if ($toDelete.Count -eq 0) {
+    Write-Output "cleanup: no merged note/* branches to delete."
+    return
+  }
+  foreach ($b in $toDelete) {
+    $r = Run-Git $Root @('branch','-d',$b)
+    if ($r.Code -eq 0) { Write-Output "deleted local branch: $b" }
+    else { Write-Output "kept (not fully merged): $b" }
+  }
+  Write-Output "cleanup done."
+}
+
 function Escape-Json {
   param([string]$s)
   if ($null -eq $s) { return '' }
@@ -280,6 +312,7 @@ try {
   $root = Get-VaultRoot
   switch ($Command) {
     'sync'     { Sync-Vault $root }
+    'cleanup'  { Cleanup-Vault $root }
     'index'    { Build-Index $root }
     'validate' { if (-not $File) { throw 'validate requires -File <path>' }; Test-Note $File }
     'post'     { Publish-Note -Root $root -File $File -NoPush:$NoPush -DryRun:$DryRun }
