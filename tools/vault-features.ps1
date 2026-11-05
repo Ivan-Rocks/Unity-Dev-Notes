@@ -1,0 +1,210 @@
+# Shared student workflows. PowerShell 5.1, no third-party runtime dependencies.
+$ContextFields = @('unity_version','render_pipeline','platform','device','prerequisites','verification','diagnosis','resolution')
+$EvidenceEnums = @{
+  verification = @('unverified','reproduced','verified')
+  diagnosis = @('unknown','suspected','confirmed')
+  resolution = @('unresolved','workaround','fixed')
+}
+
+function Assert-CleanVault {
+  param([string]$Root)
+  $r = Run-Git $Root @('status','--porcelain')
+  if ($r.Code -ne 0 -or $r.Out.Trim()) { throw 'Working tree has uncommitted changes. Save them before posting; nothing was switched or copied.' }
+}
+
+function Assert-Identity {
+  param([string]$Root)
+  foreach ($key in @('user.name','user.email')) {
+    $r = Run-Git $Root @('config','--get',$key)
+    if ($r.Code -ne 0 -or -not $r.Out.Trim()) { throw "Missing $key. Run vault.ps1 init -UserName <name> -Email <email>." }
+  }
+}
+
+function Assert-FeatureBranch {
+  param([string]$Root)
+  $branch = (Run-Git $Root @('branch','--show-current')).Out.Trim()
+  if (-not $branch -or $branch -eq (Get-DefaultBranch $Root)) { throw 'Use a note/feature branch, not the default branch or detached HEAD.' }
+}
+
+function Get-GitHubContext {
+  param([string]$Root)
+  $remote = (Run-Git $Root @('remote','get-url','origin')).Out.Trim()
+  # Never forward credentials to a host inferred from an arbitrary remote.
+  if ($remote -match '^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$' -or
+      $remote -match '^git@github\.com:([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?$') {
+    return @{ Owner = $Matches[1]; Repo = $Matches[2]; FullName = "$($Matches[1])/$($Matches[2])" }
+  }
+  throw 'Automatic PR/feedback currently supports github.com origins. Use -NoPush for a local draft; other hosts need their own review integration.'
+}
+
+function Get-GitHubHeaders {
+  param([string]$Root)
+  $null = Get-GitHubContext $Root
+  $savedPrompt = $env:GIT_TERMINAL_PROMPT; $savedInteractive = $env:GCM_INTERACTIVE
+  try {
+    $env:GIT_TERMINAL_PROMPT = '0'; $env:GCM_INTERACTIVE = 'Never'
+    $login = (Run-Git $Root @('config','--get','credential.username')).Out.Trim()
+    $request = "protocol=https`nhost=github.com`n"
+    if ($login) { $request += "username=$login`n" }
+    $credentialLines = $request + "`n" | & git -C $Root credential fill 2>$null
+    $credentialExit = $LASTEXITCODE
+  } finally {
+    $env:GIT_TERMINAL_PROMPT = $savedPrompt; $env:GCM_INTERACTIVE = $savedInteractive
+  }
+  $password = ''
+  foreach ($line in @($credentialLines)) {
+    if ($line -match '^password=(.+)$') { $password = $Matches[1] }
+  }
+  if ($credentialExit -ne 0 -or -not $password) { throw 'GitHub login is required. Log in with Git Credential Manager, then run doctor -Online. No token should be pasted into a note.' }
+  return @{ Authorization = "Bearer $password"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'Unity-Dev-Notes'; 'X-GitHub-Api-Version' = '2022-11-28' }
+}
+
+function Invoke-VaultApi {
+  param([string]$Path, [hashtable]$Headers, [string]$Method = 'GET', $Payload)
+  if (-not $Path.StartsWith('/')) { throw 'API path must be relative to api.github.com.' }
+  $request = @{ Uri = "https://api.github.com$Path"; Headers = $Headers; Method = $Method; TimeoutSec = 30; ErrorAction = 'Stop' }
+  if ($null -ne $Payload) {
+    $request.ContentType = 'application/json; charset=utf-8'
+    $request.Body = [System.Text.Encoding]::UTF8.GetBytes(($Payload | ConvertTo-Json -Depth 10))
+  }
+  try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $response = Invoke-RestMethod @request
+    # Invoke-RestMethod can emit a JSON array as one pipeline object, including [].
+    # Normalize it here so an empty PR list is not mistaken for one existing PR.
+    if ($response -is [array]) {
+      foreach ($entry in $response) { Write-Output $entry }
+    } elseif ($null -ne $response) { Write-Output $response }
+  } catch {
+    $code = 'network/authentication error'
+    if ($_.Exception.Response) { $code = "HTTP $([int]$_.Exception.Response.StatusCode)" }
+    # Do not dump request headers, credential output, or the raw request exception.
+    throw "GitHub API request failed ($code). Check network, repository access and credential permissions."
+  }
+}
+
+function Get-OrCreatePullRequest {
+  param([string]$Root, [string]$Branch, [string]$Title)
+  $repo = Get-GitHubContext $Root
+  $headers = Get-GitHubHeaders $Root
+  $base = Get-DefaultBranch $Root
+  $headFilter = [uri]::EscapeDataString("$($repo.Owner):$Branch")
+  $baseFilter = [uri]::EscapeDataString($base)
+  $existing = @(Invoke-VaultApi -Path "/repos/$($repo.FullName)/pulls?state=open&head=$headFilter&base=$baseFilter" -Headers $headers)
+  if ($existing.Count -gt 0) { return $existing[0] }
+  $payload = @{
+    title = "note: $Title"; head = $Branch; base = $base
+    body = "A draft note or correction is ready for review. The notes index was regenerated by vault.ps1. Please check applicability, evidence, and content; an administrator formalizes the note before merging."
+  }
+  return Invoke-VaultApi -Path "/repos/$($repo.FullName)/pulls" -Headers $headers -Method POST -Payload $payload
+}
+
+function Complete-PullRequest {
+  param([string]$Root, [string]$Branch, [string]$Title)
+  try {
+    $remote = Run-Git $Root @('ls-remote','--heads','origin',"refs/heads/$Branch")
+    if ($remote.Code -ne 0 -or -not $remote.Out.Trim()) { throw 'The branch is not available on origin. Push it before retrying PR creation.' }
+    $local = Run-Git $Root @('rev-parse','HEAD')
+    if ($local.Code -ne 0 -or ($remote.Out.Trim() -split '\s+')[0] -ne $local.Out.Trim()) { throw 'Local HEAD differs from the uploaded branch. Push the intended commit before retrying PR creation.' }
+    $pr = Get-OrCreatePullRequest $Root $Branch $Title
+    if (-not $pr.html_url -or $pr.state -ne 'open') { throw 'GitHub did not return an open pull request.' }
+    Write-Output 'PENDING_REVIEW: pull request exists; the note is not yet merged.'
+    Write-Output "PR URL: $($pr.html_url)"
+  } catch {
+    Write-Output 'PR_PENDING: automatic review-request creation did not finish. Do not repost the note.'
+    Write-Output 'Retry on this branch: powershell -NoProfile -ExecutionPolicy Bypass -File tools/vault.ps1 pr'
+    throw
+  }
+}
+
+function Test-VaultEnvironment {
+  param([string]$Root, [switch]$Online, [switch]$Json)
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'Git is not installed or is not on PATH. Install Git and reopen the terminal, or use the GitHub web fallback in docs/onboarding.md.' }
+  $checks = @()
+  $gitVersion = Run-Git $Root @('--version')
+  $checks += [pscustomobject]@{ check = 'git'; ok = ($gitVersion.Code -eq 0); detail = $gitVersion.Out.Trim() }
+  foreach ($key in @('user.name','user.email','credential.helper')) {
+    $r = Run-Git $Root @('config','--get',$key)
+    $checks += [pscustomobject]@{ check = $key; ok = ($r.Code -eq 0 -and [bool]$r.Out.Trim()); detail = if ($r.Code -eq 0) { 'configured' } else { 'missing; run init' } }
+  }
+  $skill = Join-Path $env:USERPROFILE '.agents/skills/posting-vault-notes/SKILL.md'
+  $checks += [pscustomobject]@{ check = 'agent-skill'; ok = (Test-Path -LiteralPath $skill); detail = 'Optional for manual notes; init installs the agent skill.' }
+  $checks += [pscustomobject]@{ check = 'powershell-language'; ok = ($ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'); detail = "$($ExecutionContext.SessionState.LanguageMode)" }
+  if ($Online) {
+    try {
+      $repo = Get-GitHubContext $Root; $headers = Get-GitHubHeaders $Root
+      $user = Invoke-VaultApi -Path '/user' -Headers $headers
+      $access = Invoke-VaultApi -Path "/repos/$($repo.FullName)" -Headers $headers
+      $expected = (Run-Git $Root @('config','--get','credential.username')).Out.Trim()
+      $sameUser = (-not $expected -or $expected -ieq $user.login)
+      $checks += [pscustomobject]@{ check = 'github-write'; ok = ([bool]$access.permissions.push -and $sameUser); detail = "account=$($user.login); push=$($access.permissions.push); expected-account-match=$sameUser" }
+    } catch {
+      $checks += [pscustomobject]@{ check = 'github-write'; ok = $false; detail = $_.Exception.Message }
+    }
+  }
+  $ready = @($checks | Where-Object { -not $_.ok -and $_.check -ne 'agent-skill' }).Count -eq 0
+  $report = [pscustomobject]@{ ready = $ready; online_checked = [bool]$Online; note = 'Offline checks do not prove network access, write permissions, or a proxy-free connection.'; checks = @($checks) }
+  if ($Json) { $report | ConvertTo-Json -Depth 6 } else { $checks | Format-Table -AutoSize; Write-Output $report.note }
+  if (-not $ready) { throw 'Environment check found required setup problems.' }
+}
+
+function Search-Vault {
+  param([string]$Root, [string]$Query, [string]$File, [string]$UnityVersion, [switch]$IncludeDrafts, [switch]$Interactive, [switch]$Json)
+  if ($File -and $Query) { throw 'Use either -Query or -File, not both.' }
+  if ($File) { $Query = [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $File).Path, $Utf8NoBom) }
+  if ($Interactive -and -not $Query) { $Query = Read-Host 'Paste an error or keywords (one line)' }
+  if (-not $Query -or -not $Query.Trim()) { throw 'Use search -Query <error/keywords>, search -File <error.txt>, or search -Interactive.' }
+  $tokens = @()
+  foreach ($m in [regex]::Matches($Query.ToLowerInvariant(), '[a-z_][a-z0-9_.-]{2,}|[\p{IsCJKUnifiedIdeographs}]{2,}')) {
+    $token = $m.Value; $tokens += $token
+    if ($token -match '^[\p{IsCJKUnifiedIdeographs}]{3,}$') {
+      for ($i = 0; $i -lt $token.Length - 1; $i++) { $tokens += $token.Substring($i,2) }
+    }
+  }
+  $tokens = @($tokens | Sort-Object -Unique | Select-Object -First 150)
+  $results = @()
+  # Read notes directly, so new or corrected notes can be found even with an old index.
+  foreach ($f in @(Get-ChildItem (Join-Path $Root 'notes') -Recurse -Filter '*.md')) {
+    $text = [System.IO.File]::ReadAllText($f.FullName, $Utf8NoBom)
+    if ($text -notmatch '^\s*---') { continue }
+    $fm = Read-Frontmatter $f.FullName
+    if ($fm['status'] -eq 'deprecated' -or (-not $IncludeDrafts -and $fm['status'] -ne 'formalized')) { continue }
+    $version = $fm['unity_version']
+    if ($UnityVersion -and $version -and $version -ne $UnityVersion -and -not $version.StartsWith("$UnityVersion.") -and -not $UnityVersion.StartsWith("$version.")) { continue }
+    $summary = Get-Summary $f.FullName
+    $score = 0
+    foreach ($token in $tokens) {
+      if ($fm['title'].ToLowerInvariant().Contains($token)) { $score += 5 }
+      if (("$($fm['tags']) $summary").ToLowerInvariant().Contains($token)) { $score += 3 }
+      if ($text.ToLowerInvariant().Contains($token)) { $score++ }
+    }
+    if ($score -eq 0) { continue }
+    $context = @()
+    foreach ($field in @('unity_version','render_pipeline','platform','device','prerequisites')) {
+      $value = if ($fm[$field]) { $fm[$field] } else { 'unspecified' }
+      $context += "${field}=$value"
+    }
+    $verification = if ($fm['verification']) { $fm['verification'] } else { 'unspecified (not proof of validation)' }
+    $results += [pscustomobject]@{ Score = $score; Id = $fm['id']; Title = $fm['title']; Status = $fm['status']; Environment = ($context -join '; '); Verification = $verification; Diagnosis = $fm['diagnosis']; Resolution = $fm['resolution']; Summary = $summary; Path = ($f.FullName.Substring($Root.Length + 1) -replace '\\','/') }
+  }
+  $ranked = @($results | Sort-Object @{Expression='Score';Descending=$true},Id | Select-Object -First 10)
+  if ($Json) { ConvertTo-Json -InputObject @($ranked) -Depth 5 }
+  elseif (-not $ranked.Count) { Write-Output 'No matching note. Try fewer keywords or -IncludeDrafts. No match does not prove that no solution exists.' }
+  else { $ranked | Format-List Title,Status,Environment,Verification,Diagnosis,Resolution,Summary,Path }
+}
+
+function Send-NoteFeedback {
+  param([string]$Root, [string]$NoteId, [string]$Message, [switch]$DryRun)
+  if ($NoteId -notmatch '^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$' -or -not $Message -or -not $Message.Trim()) { throw 'Use feedback -NoteId <existing-id> -Message <what failed, environment, expected behavior>.' }
+  $notes = @(Get-ChildItem (Join-Path $Root 'notes') -Recurse -Filter "$NoteId.md")
+  if ($notes.Count -ne 1) { throw 'Feedback requires exactly one matching existing note.' }
+  $fm = Read-Frontmatter $notes[0].FullName
+  $repo = Get-GitHubContext $Root
+  $base = [uri]::EscapeDataString((Get-DefaultBranch $Root))
+  $path = $notes[0].FullName.Substring($Root.Length + 1) -replace '\\','/'
+  $payload = @{ title = "Note feedback: $($fm['title'])"; body = "Note: https://github.com/$($repo.FullName)/blob/$base/$path`n`n$Message`n`nPlease review this report; it does not automatically mark the note as invalid." }
+  if ($DryRun) { Write-Output '[dry-run] Would create a feedback issue:'; $payload | ConvertTo-Json; return }
+  $issue = Invoke-VaultApi -Path "/repos/$($repo.FullName)/issues" -Headers (Get-GitHubHeaders $Root) -Method POST -Payload $payload
+  if (-not $issue.html_url) { throw 'GitHub did not return a feedback issue URL.' }
+  Write-Output "FEEDBACK_SUBMITTED: $($issue.html_url)"
+}

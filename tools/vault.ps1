@@ -7,9 +7,14 @@
     sync                     Fetch origin; fast-forward default branch, or rebase a feature branch.
     index                    Regenerate notes/index.json from notes/**/*.md.
     validate -File <path>    Validate a note's frontmatter.
-    post -File <path>        Publish a draft note: sync -> id check -> branch -> write -> index -> commit -> push -> PR URL.
+    post -File <path>        Publish a draft note: sync -> id check -> branch -> write -> index -> commit -> push -> create/reuse actual PR (pending review).
                              Options: -DryRun (plan only), -NoPush (skip push).
     cleanup                  Delete local note/* branches already merged into origin/main.
+    doctor [-Online]         Check local setup; optionally verify GitHub account/write access.
+    init                     Install the skill and configure repository-local identity.
+    search -Query <text>     Find notes for an error and show known applicability.
+    pr                       Retry an actual PR for the current uploaded branch.
+    feedback                 Preview or send a failure report for an existing note.
 
   Compatible with Windows PowerShell 5.1. Keep script messages ASCII to avoid
   encoding issues; note *content* is read/written as UTF-8.
@@ -20,10 +25,21 @@
   pwsh -File tools/vault.ps1 post -File C:\tmp\my-note.md -DryRun
 #>
 param(
-  [Parameter(Position=0)][ValidateSet('sync','index','validate','post','cleanup')][string]$Command,
+  [Parameter(Position=0)][ValidateSet('sync','index','validate','post','cleanup','doctor','init','search','pr','feedback')][string]$Command,
   [string]$File,
   [switch]$NoPush,
-  [switch]$DryRun
+  [switch]$DryRun,
+  [switch]$Update,
+  [string]$Query,
+  [string]$NoteId,
+  [string]$Message,
+  [string]$UnityVersion,
+  [switch]$IncludeDrafts,
+  [switch]$Interactive,
+  [switch]$Json,
+  [switch]$Online,
+  [string]$UserName,
+  [string]$Email
 )
 
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -64,13 +80,27 @@ function Read-Frontmatter {
   param([string]$Path)
   $text = [System.IO.File]::ReadAllText($Path, $Utf8NoBom)
   $lines = $text -split "`r?`n"
-  if ($lines.Count -lt 2 -or $lines[0].Trim() -ne '---') { throw "No YAML frontmatter in $Path" }
-  $fm = @{}
+  if ($lines.Count -lt 3 -or $lines[0].Trim() -ne '---') { throw "No YAML frontmatter in $Path" }
+  $fm = @{}; $closed = $false; $listKey = ''
   for ($i = 1; $i -lt $lines.Count; $i++) {
     $line = $lines[$i]
-    if ($line.Trim() -eq '---') { break }
-    if ($line -match '^\s*([A-Za-z0-9_]+)\s*:\s*(.*)$') { $fm[$Matches[1]] = $Matches[2].Trim() }
+    if ($line.Trim() -eq '---') { $closed = $true; break }
+    # Only root keys belong to note metadata; nested source fields must not overwrite them.
+    if ($line -match '^([A-Za-z0-9_]+)\s*:\s*(.*)$') {
+      $key = $Matches[1]; $value = $Matches[2].Trim()
+      if ($fm.ContainsKey($key)) { throw "Duplicate frontmatter field: $key" }
+      if ($value.Length -ge 2 -and (($value.StartsWith("'") -and $value.EndsWith("'")) -or ($value.StartsWith('"') -and $value.EndsWith('"')))) {
+        $value = $value.Substring(1, $value.Length - 2)
+      }
+      $fm[$key] = $value; $listKey = ''
+      if ($key -in @('tags','related') -and -not $value) { $listKey = $key }
+    } elseif ($listKey -and $line -match '^\s+-\s+(.+)$') {
+      $item = $Matches[1].Trim().Trim('"').Trim("'")
+      if ($fm[$listKey]) { $fm[$listKey] += ',' }
+      $fm[$listKey] += $item
+    }
   }
+  if (-not $closed) { throw "Unclosed YAML frontmatter in $Path" }
   return $fm
 }
 
@@ -80,7 +110,7 @@ function Parse-Tags {
   $t = $Val.Trim()
   if ($t -eq '[]') { return @() }
   if ($t -match '^\[(.*)\]$') { $t = $Matches[1] }
-  return @($t -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+  return @($t -split ',' | ForEach-Object { $_.Trim().Trim('"').Trim("'") } | Where-Object { $_ -ne '' })
 }
 
 function Get-Summary {
@@ -108,6 +138,16 @@ function Validate-Frontmatter {
   if ($Fm['id'] -and $Fm['id'] -notmatch '^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]+$') { $errs += "invalid id: $($Fm['id'])" }
   if ($Fm['category'] -and $Categories -notcontains $Fm['category']) { $errs += "invalid category: $($Fm['category'])" }
   if ($Fm['status'] -and $Statuses -notcontains $Fm['status']) { $errs += "invalid status: $($Fm['status'])" }
+  foreach ($key in @('created','updated')) {
+    $parsedDate = [datetime]::MinValue
+    if ($Fm[$key] -and -not [datetime]::TryParseExact($Fm[$key], 'yyyy-MM-dd', [cultureinfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$parsedDate)) { $errs += "invalid date: $key" }
+  }
+  foreach ($key in $EvidenceEnums.Keys) {
+    if ($Fm[$key] -and $EvidenceEnums[$key] -notcontains $Fm[$key]) { $errs += "invalid ${key}: $($Fm[$key])" }
+  }
+  foreach ($key in @('render_pipeline','platform','device','prerequisites')) {
+    if ($Fm[$key] -match '\u5f85\u586b\u5199') { $errs += "replace or omit placeholder: $key" }
+  }
   return $errs
 }
 
@@ -138,14 +178,14 @@ function Sync-Vault {
   if ($cur -eq $default) {
     $r = Run-Git $Root @('merge','--ff-only',"origin/$default")
     if ($r.Code -ne 0) {
-      Write-Output "WARNING: cannot fast-forward (local diverged). Resolve manually: git rebase origin/$default"
+      throw "Cannot fast-forward (local diverged). Resolve manually: git rebase origin/$default"
     } else {
       Write-Output "synced: $($r.Out)"
     }
   } else {
     $r = Run-Git $Root @('rebase',"origin/$default")
     if ($r.Code -ne 0) {
-      Write-Output "rebase conflict on $cur; resolve manually, then git rebase --continue"
+      throw "Rebase conflict on $cur; resolve manually, then git rebase --continue"
     } else {
       Write-Output "rebased $cur onto origin/$default"
     }
@@ -192,49 +232,26 @@ function Escape-Json {
 function Build-Index {
   param([string]$Root)
   $notesDir = Join-Path $Root 'notes'
-  $items = @()
-  $files = @(Get-ChildItem $notesDir -Recurse -Filter '*.md')
-  foreach ($f in $files) {
+  $items = @(); $seen = @{}
+  foreach ($f in @(Get-ChildItem $notesDir -Recurse -Filter '*.md' | Sort-Object FullName)) {
     $txt = [System.IO.File]::ReadAllText($f.FullName, $Utf8NoBom)
-    if ($txt -notmatch '^\s*---') { continue }   # skip non-note md (e.g. notes/README.md)
+    if ($txt -notmatch '^\s*---') { continue }
     $fm = Read-Frontmatter $f.FullName
     if (-not $fm['id']) { continue }
-    $rel = $f.FullName.Substring($notesDir.Length + 1) -replace '\\','/'
-    $items += [pscustomobject]@{
-      id       = $fm['id']
-      path     = $rel
-      title    = $fm['title']
-      category = $fm['category']
-      status   = $fm['status']
-      tags     = @(Parse-Tags $fm['tags'])
-      updated  = $fm['updated']
-      summary  = Get-Summary $f.FullName
+    $errs = @(Validate-Frontmatter $fm)
+    if ($errs.Count) { throw "Invalid indexed note $($f.Name): $($errs -join '; ')" }
+    if ($seen.ContainsKey($fm['id'])) { throw "Duplicate note id: $($fm['id'])" }
+    $seen[$fm['id']] = $true
+    $item = [ordered]@{
+      id = $fm['id']; path = ($f.FullName.Substring($notesDir.Length + 1) -replace '\\','/')
+      title = $fm['title']; category = $fm['category']; status = $fm['status']
+      tags = @(Parse-Tags $fm['tags']); updated = $fm['updated']; summary = Get-Summary $f.FullName
     }
+    foreach ($field in $ContextFields) { $item[$field] = $fm[$field] }
+    $items += [pscustomobject]$item
   }
-  $items = @($items | Sort-Object id)
-
-  $sb = New-Object System.Text.StringBuilder
-  [void]$sb.AppendLine('{')
-  [void]$sb.AppendLine('  "generated": "' + (Get-Date -Format 'yyyy-MM-dd') + '",')
-  [void]$sb.AppendLine('  "notes": [')
-  for ($i = 0; $i -lt $items.Count; $i++) {
-    $it = $items[$i]
-    $tagsJson = (@($it.tags) | ForEach-Object { '"' + (Escape-Json $_) + '"' }) -join ', '
-    [void]$sb.AppendLine('    {')
-    [void]$sb.AppendLine('      "id": "'       + (Escape-Json $it.id)       + '",')
-    [void]$sb.AppendLine('      "path": "'     + (Escape-Json $it.path)     + '",')
-    [void]$sb.AppendLine('      "title": "'    + (Escape-Json $it.title)    + '",')
-    [void]$sb.AppendLine('      "category": "' + (Escape-Json $it.category) + '",')
-    [void]$sb.AppendLine('      "status": "'   + (Escape-Json $it.status)   + '",')
-    [void]$sb.AppendLine('      "tags": [' + $tagsJson + '],')
-    [void]$sb.AppendLine('      "updated": "'  + (Escape-Json $it.updated)  + '",')
-    [void]$sb.AppendLine('      "summary": "'  + (Escape-Json $it.summary)  + '"')
-    if ($i -lt $items.Count - 1) { [void]$sb.AppendLine('    },') } else { [void]$sb.AppendLine('    }') }
-  }
-  [void]$sb.AppendLine('  ]')
-  [void]$sb.Append('}')
-  $json = $sb.ToString()
-  [System.IO.File]::WriteAllText((Join-Path $notesDir 'index.json'), $json, $Utf8NoBom)
+  $data = [ordered]@{ generated = (Get-Date -Format 'yyyy-MM-dd'); notes = @($items | Sort-Object id) }
+  [System.IO.File]::WriteAllText((Join-Path $notesDir 'index.json'), ($data | ConvertTo-Json -Depth 8), $Utf8NoBom)
   Write-Output "index.json regenerated with $($items.Count) note(s)."
 }
 
@@ -242,39 +259,53 @@ function Test-Note {
   param([string]$Path)
   $fm = Read-Frontmatter $Path
   $errs = @(Validate-Frontmatter $fm)
+  if ([System.IO.Path]::GetFileNameWithoutExtension($Path) -ne $fm['id']) { $errs += 'id must match the filename' }
   if ($errs.Count -eq 0) { Write-Output "PASS: $Path" }
   else {
     Write-Output "FAIL: $Path"
     $errs | ForEach-Object { Write-Output "  - $_" }
+    throw "Note validation failed."
   }
 }
 
 function Publish-Note {
-  param([string]$Root, [string]$File, [switch]$NoPush, [switch]$DryRun)
+  param([string]$Root, [string]$File, [switch]$NoPush, [switch]$DryRun, [switch]$Update)
   if (-not $File) { throw 'post requires -File <path-to-draft.md>' }
   $draftPath = (Resolve-Path -LiteralPath $File).Path
   $fm = Read-Frontmatter $draftPath
   $errs = @(Validate-Frontmatter $fm)
   if ($errs.Count -gt 0) { throw ("draft invalid: " + ($errs -join '; ')) }
 
+  if ([System.IO.Path]::GetFileNameWithoutExtension($draftPath) -ne $fm['id']) { throw 'id must match the filename' }
+  if ($fm['status'] -notin @('draft','review')) { throw 'Post accepts draft/review only; an admin formalizes notes during review.' }
   $id       = $fm['id']
   $title    = $fm['title']
   $category = $fm['category']
   $targetDir  = Join-Path $Root "notes\$category"
   $targetFile = Join-Path $targetDir "$id.md"
-  $branch   = "note/$id"
+  $branch   = if ($Update) { "note/$id-update-" + (Get-Date -Format 'yyyyMMddHHmmssfff') } else { "note/$id" }
 
   if ($DryRun) {
     Write-Output "[dry-run] target   : $targetFile"
     Write-Output "[dry-run] branch   : $branch (status=$($fm['status']))"
-    Write-Output "[dry-run] steps    : fetch -> merge --ff-only main -> id-check -> checkout -b -> copy -> index -> commit -> push"
+    Write-Output "[dry-run] steps    : fetch -> merge --ff-only main -> id-check -> checkout -b -> copy -> index -> commit -> push -> create-or-reuse PR (pending review)"
     return
   }
 
+  Assert-CleanVault $Root
+  Assert-Identity $Root
+  # Fail before changing a branch if automatic PR creation cannot be authenticated.
+  if (-not $NoPush) { $null = Get-GitHubContext $Root; $null = Get-GitHubHeaders $Root }
   Sync-Base $Root
 
   $existing = @(Get-ChildItem (Join-Path $Root 'notes') -Recurse -Filter "$id.md" -ErrorAction SilentlyContinue)
-  if ($existing.Count -gt 0) { throw "Note id '$id' already exists: $($existing[0].FullName)" }
+  if ($Update) {
+    if ($existing.Count -ne 1) { throw "Update requires exactly one existing note with id '$id'." }
+    $old = Read-Frontmatter $existing[0].FullName
+    if ($old['category'] -ne $category) { throw 'Update cannot move a note to another category.' }
+    if ($old['created'] -ne $fm['created']) { throw 'Update must preserve the original created date.' }
+    if ($fm['updated'] -lt $old['updated']) { throw 'updated must not move backwards.' }
+  } elseif ($existing.Count -gt 0) { throw "Note id '$id' already exists. Use post -Update -File <revised-draft.md>." }
 
   $r = Run-Git $Root @('checkout','-b',$branch)
   if ($r.Code -ne 0) { throw "checkout -b $branch failed: $($r.Out)" }
@@ -298,16 +329,13 @@ function Publish-Note {
   if ($r.Code -ne 0) { throw "git push failed: $($r.Out)" }
   Write-Output "pushed branch $branch."
 
-  $default = Get-DefaultBranch $Root
-  $remoteUrl = (Run-Git $Root @('config','--get','remote.origin.url')).Out.Trim()
-  if ($remoteUrl -match 'github\.com[:/](.+?)(\.git)?$') {
-    $repoPath = $Matches[1]
-    Write-Output "PR URL: https://github.com/$repoPath/compare/$default...$branch`?expand=1"
-  } else {
-    Write-Output "Open a PR from $branch into $default manually."
-  }
+  Complete-PullRequest $Root $branch $title
+
 }
 
+. (Join-Path $PSScriptRoot 'vault-features.ps1')
+
+if ($MyInvocation.InvocationName -ne '.') {
 try {
   $root = Get-VaultRoot
   switch ($Command) {
@@ -315,10 +343,17 @@ try {
     'cleanup'  { Cleanup-Vault $root }
     'index'    { Build-Index $root }
     'validate' { if (-not $File) { throw 'validate requires -File <path>' }; Test-Note $File }
-    'post'     { Publish-Note -Root $root -File $File -NoPush:$NoPush -DryRun:$DryRun }
+    'post'     { Publish-Note -Root $root -File $File -NoPush:$NoPush -DryRun:$DryRun -Update:$Update }
+    'doctor'   { Test-VaultEnvironment $root -Online:$Online -Json:$Json }
+    'init'     { & (Join-Path $PSScriptRoot 'setup.ps1') -Root $root -UserName $UserName -Email $Email -Online:$Online; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
+    'search'   { Search-Vault $root -Query $Query -File $File -UnityVersion $UnityVersion -IncludeDrafts:$IncludeDrafts -Interactive:$Interactive -Json:$Json }
+    'pr'       { Assert-FeatureBranch $root; $current = (Run-Git $root @('branch','--show-current')).Out.Trim(); $title = (Run-Git $root @('log','-1','--format=%s')).Out.Trim() -replace '^note:\s*',''; Complete-PullRequest $root $current $title }
+    'feedback' { Send-NoteFeedback $root -NoteId $NoteId -Message $Message -DryRun:$DryRun }
     default    { throw "Unknown command: $Command" }
   }
 } catch {
   Write-Output "ERROR: $($_.Exception.Message)"
   exit 1
+}
+
 }

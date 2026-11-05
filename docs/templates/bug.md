@@ -8,6 +8,12 @@ created: YYYY-MM-DD
 updated: YYYY-MM-DD
 author: 「人名 或 DSH」
 unity_version: "6000.3"
+render_pipeline: "待填写（未知可删除此字段）"
+platform: "待填写（未知可删除此字段）"
+prerequisites: "待填写（未知可删除此字段）"
+verification: unverified
+diagnosis: unknown
+resolution: unresolved
 related: []
 source:
   - title: 「资料标题」
@@ -27,14 +33,22 @@ source:
 
 ## 原因
 
-- 根因（一两句话讲清楚，必要时给原理）
-- 为什么之前会踩：易混点、版本差异
+- 原因待确认（可以直接保留这句话，不必为了填模板下结论）
+- 已知证据 / 待验证的猜测；确认后才把 diagnosis 改为 confirmed
 
 ## 解决
 
-- 修复步骤（可复制的代码/设置）
+- 修复或临时绕过步骤（可复制的代码/设置）；若未解决，明确写“暂无方案”
 - 验证方法（怎么确认修好了）
 - 变通方案（若无法根治）
+
+## 适用条件
+
+- 已验证版本、渲染管线、平台、设备与依赖；不清楚的写“未知”，发布前删除元数据中的“待填写”占位。
+
+## 验证方式
+
+- 复现与验证步骤、预期结果、实际结果；未经验证明确标注，不填写虚构结果。
 
 ## AI Prompt
 

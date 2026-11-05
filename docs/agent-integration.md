@@ -90,8 +90,8 @@ Unity 已提供面向 AI agent 的官方 plugin 与 skills 仓库：
 ## 9. Roadmap（非现在实现，仅记录顺序）
 
 1. **P0**：跑通「DSH 生成草稿 → 人工 PR → formalized」——已落地 `tools/vault.ps1`（sync / index / validate / post / cleanup）+ 技能 `posting-vault-notes`。
-2. **P1**：CI 校验 frontmatter（用 `note.schema.json`）+ `post` 用 `gh pr create` 自动开 PR。
-3. **P2**：DSH 插件实现「读」——index 检索 + 全文回填。
+2. **P1**：CI 校验 frontmatter（用 `note.schema.json`）仍待接入；`post` 现已用 GitHub REST API 自动创建/复用真实 PR，不依赖 `gh`，失败可用 `pr` 重试。
+3. **P2**：本地 `vault.ps1 search` 已支持报错/关键词检索并显示适用环境；DSH 插件的自动检索与全文回填仍待接入。
 4. **P3**：DSH 插件实现「写」——bug 解决后主动提议建 note，开分支 + PR。
 5. **P4**：维护助手——定期扫描重复/过时/缺来源，产出建议 PR。
 6. **P5**：接入「课件 → Unity 插件」链路，把本库作为插件的上下文知识库。

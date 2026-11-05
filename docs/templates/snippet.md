@@ -8,6 +8,10 @@ created: YYYY-MM-DD
 updated: YYYY-MM-DD
 author: 「人名 或 DSH」
 unity_version: "6000.3"
+render_pipeline: "待填写（未知可删除此字段）"
+platform: "待填写（未知可删除此字段）"
+prerequisites: "待填写（未知可删除此字段）"
+verification: unverified
 related: []
 source:
   - title: 「资料标题」
@@ -27,6 +31,14 @@ source:
 
 - 依赖（命名空间、包、版本）
 - 用法示例（怎么调用）
+
+## 适用条件
+
+- 已验证版本、渲染管线、平台、设备与依赖；不清楚的写“未知”，发布前删除元数据中的“待填写”占位。
+
+## 验证方式
+
+- 复现与验证步骤、预期结果、实际结果；未经验证明确标注，不填写虚构结果。
 
 ## AI Prompt
 

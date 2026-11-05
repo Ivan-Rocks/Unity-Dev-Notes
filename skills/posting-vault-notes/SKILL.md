@@ -1,6 +1,6 @@
 ---
 name: posting-vault-notes
-description: Use when posting or syncing notes in a git-backed knowledge vault (e.g. Unity Dev Notes), when git push is rejected as non-fast-forward after a colleague pushed first, or when a notes index (index.json) needs regeneration.
+description: Use when posting or syncing notes in a git-backed knowledge vault (e.g. Unity Dev Notes), when git push is rejected as non-fast-forward after a colleague pushed first, or when searching errors, correcting an existing note, reporting a failed solution, or when a notes index (index.json) needs regeneration.
 ---
 
 # Posting Vault Notes
@@ -21,14 +21,27 @@ Not for: editing `docs/` contracts, or changes outside `notes/`.
 
 ## Core Workflow
 
-Prefer the repo script `tools/vault.ps1` over raw git. It bundles sync + branch + index + push in one step.
+Prefer the repo script `tools/vault.ps1` over raw git. It bundles sync + branch + index + push + actual PR creation in one step.
 
 1. **Write the draft** as a `.md` with frontmatter (`id`, `title`, `category`, `status`, `created`, `updated`, `source`), per `docs/note-spec.md` and a template in `docs/templates/`.
 2. **Show the draft and wait for confirmation.** Present the note in chat and ask the user to decide "发 / 改 / 不发". Do NOT run `post` until the user confirms; apply any edits they request first.
 3. **Validate**: `tools/vault.ps1 validate -File <draft>`
 4. **Post** (sync → id-check → branch → write → regenerate index → commit → push):
    `tools/vault.ps1 post -File <draft>`
-5. **Open the PR** from the printed URL. An admin sets `status: formalized` before merging to `main`.
+5. **Report the actual PR** from the printed `/pull/<number>` URL and the `PENDING_REVIEW` state. Do not claim the note is merged. If `PR_PENDING` is printed, keep the current branch and retry `vault.ps1 pr`; do not repost the same id. An admin formalizes and merges the note.
+
+## Search first, setup only when needed
+
+- For a pasted error, use `vault.ps1 search -Query <text>` or `search -File <log.txt>`; add `-Json` for agent output. Default results are formalized only; add `-IncludeDrafts` explicitly for draft evidence. Deprecated notes are excluded.
+- Show the note's environment and verification fields to the user. Missing fields are unknown, and an approved note is not automatically validated on every version. This is local keyword search, not a claim of exhaustive or semantic retrieval.
+- Run `doctor` for local configuration and `doctor -Online` for actual GitHub account/write-access checks. `setup.ps1` installs this skill with the chosen repository path and configures only repository-local identity. Do not invent a name/email or overwrite global identity.
+- A note can have `diagnosis: unknown` and `resolution: workaround`. Preserve uncertainty; never invent a root cause. Keep applicability, diagnostic steps and verification in the human-readable body. AI Prompt contains only agent operation hints.
+
+## Correct an existing note or report a failure
+
+- Read the original note, preserve id/category/created, update the updated date, and set status to draft. Show the full revision and wait for confirmation, then run `post -Update -File <revision.md>`. The update gets a new review branch; main is not directly edited.
+- For failure feedback, prepare note id, actual environment, failure and expected result. Show it and wait for explicit confirmation before `feedback -NoteId <id> -Message <report>` creates an issue. Use `-DryRun` to preview without transmitting anything.
+- If shell startup fails in a restricted DSH environment, report the limitation. Do not disable protections or call the note validated. Offer the documented local PowerShell or GitHub web fallback.
 
 Run `tools/vault.ps1 sync` before ANY manual git work — it fetches and fast-forwards `main`, or rebases a feature branch. This is what makes "forgot to pull" structurally impossible.
 
@@ -39,7 +52,12 @@ Run `tools/vault.ps1 sync` before ANY manual git work — it fetches and fast-fo
 | `vault.ps1 sync` | fetch + fast-forward main / rebase feature branch |
 | `vault.ps1 index` | regenerate `notes/index.json` from `notes/**/*.md` |
 | `vault.ps1 validate -File <draft>` | check frontmatter |
-| `vault.ps1 post -File <draft>` | publish a draft (sync→branch→write→index→commit→push) |
+| `vault.ps1 post -File <draft>` | publish a confirmed draft and create/reuse its PR |
+| `vault.ps1 post -Update -File <revision>` | submit a confirmed correction to an existing note |
+| `vault.ps1 pr` | retry only the review request on the current uploaded branch |
+| `vault.ps1 search -Query <error>` | local error/keyword search with applicability |
+| `vault.ps1 doctor -Online` | verify active GitHub identity and repository write access |
+| `vault.ps1 feedback -NoteId <id> -Message <report> -DryRun` | preview failure feedback |
 | `vault.ps1 post -File <draft> -DryRun` | plan only, no side effects |
 | `vault.ps1 post -File <draft> -NoPush` | commit on branch, skip push |
 | `vault.ps1 cleanup` | delete local `note/*` branches merged into origin/main |

@@ -22,6 +22,12 @@
 | `updated` | date | ✅ | `YYYY-MM-DD`，内容有实质改动时更新 |
 | `author` | string | 建议 | 作者（人，或 `DSH`） |
 | `unity_version` | string | 可选 | 涉及的 Unity 版本，如 `6000.3`、`2022.3` |
+| `render_pipeline` | string | 可选 | Built-in / URP / HDRP 等适用管线，未知时省略 |
+| `platform` / `device` | string | 可选 | 已验证的系统、平台或设备 |
+| `prerequisites` | string | 可选 | 依赖插件、版本及其他适用前提 |
+| `verification` | string | 可选 | `unverified` / `reproduced` / `verified`，分别表示未验证、已复现、已验证解决 |
+| `diagnosis` | string | 可选 | `unknown` / `suspected` / `confirmed`，分别表示根因未知、推测、已确认 |
+| `resolution` | string | 可选 | `unresolved` / `workaround` / `fixed`，分别表示未解决、临时绕过、已修复 |
 | `related` | string[] | 可选 | 相关笔记的 `id` 列表 |
 | `source` | object[] | 建议 | 参考资料：`{ title, url, accessed }`，`accessed` 为访问日期 |
 
@@ -46,7 +52,7 @@ source:
 精简要点或步骤（用 bullet、代码块）。只写可执行、可复用的内容。
 
 ## AI Prompt
-给 AI 的细节、上下文、可复用 prompt 模板。长的、辅助性的内容全部放这里。
+仅保留给 AI 的可复用操作提示；适用条件、诊断步骤、验证方式放在正文供人阅读。
 ```
 
 **各 category 的正文小节**：
@@ -60,8 +66,8 @@ source:
 
 1. **Summary 是硬要求**，任何人/索引扫一眼就知道这篇讲什么。
 2. 正文只留「执行路径」，删掉背景铺垫、过程性废话。
-3. 真正的细节、排障分支、给 AI 的指令**全部下沉到 `## AI Prompt`**，不污染正文。
-4. 一屏原则：正文部分尽量控制在一屏内（约 30 行），超出的拆成多篇或下放 AI Prompt。
+3. 正文保留学生排错需要的**适用条件、诊断步骤、验证方式**。长日志放附件或单独链接；`AI Prompt` 仅放 agent 的操作提示。
+4. 正文优先精简，但不要为满足一屏限制删掉复现条件或验证证据；必要时拆成关联笔记。
 
 ## 5. 审核 Checklist（人工 PR 时逐项过）
 
@@ -78,3 +84,14 @@ source:
 ## 6. 与 schema 的关系
 
 `note.schema.json` 只校验 frontmatter 的**结构与枚举**，不校验正文。自动化工具（DSH 插件、CI）用它做「元数据是否合法」的硬校验；「内容是否精简、AI Prompt 是否可用」属于人工审核的软校验，暂不机器化。
+
+## 7. 不确定原因、适用范围与纠错
+
+- 根因未知时允许直接写“原因待确认”，设置 `diagnosis: unknown`；猜测写 `suspected` 并列出待验证项。不要把猜测写成已确认原因。
+- 只有临时绕过方法时设置 `resolution: workaround`，正文说明局限；不能把“能运行一次”当成完整修复。
+- `status` 是审核状态，`verification` 是技术验证程度。`formalized` 不等于对所有版本验证有效；字段缺失表示未知。
+- 每篇可在正文增加 `## 适用条件`、`## 验证方式`。搜索会同时展示已有环境字段和验证程度；字段缺失不会自动补成“已验证”。
+- 补充已有笔记：保留 `id`、`category`、`created`，更新 `updated`，将 `status` 设为 `draft`，确认后执行 `post -Update -File <修订稿.md>`。它创建新的审核分支，不直接修改 main。
+- 反馈失效：先展示将发送的内容，确认后执行 `feedback -NoteId <id> -Message <现象、环境和预期>`；它创建 issue，管理员判断后再修改，不自动废弃笔记。
+
+元数据使用简单 YAML：根字段为单行字符串；`tags`、`related` 支持行内列表或缩进短列表；`source` 用模板中的对象列表。内置 PowerShell 校验器只检查必填值、id、日期、枚举和文件名，不是完整 YAML/JSON Schema 实现。正式契约以 Schema 为准。
