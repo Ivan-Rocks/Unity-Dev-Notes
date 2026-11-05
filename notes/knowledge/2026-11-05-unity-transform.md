@@ -2,7 +2,7 @@
 id: 2026-11-05-unity-transform
 title: Unity 中设置物体的 Transform
 category: knowledge
-status: draft
+status: formalized
 tags: [transform, position, rotation, scale]
 created: 2026-11-05
 updated: 2026-11-05

@@ -16,7 +16,7 @@
       "path": "knowledge/2026-11-05-unity-transform.md",
       "title": "Unity 中设置物体的 Transform",
       "category": "knowledge",
-      "status": "draft",
+      "status": "formalized",
       "tags": ["transform", "position", "rotation", "scale"],
       "updated": "2026-11-05",
       "summary": "Transform 是每个 GameObject 必带的组件，决定它在场景中的位置（position）、旋转（rotation）和缩放（scale）。在 Inspector 里直接改数值即可；代码里用 transform.position / rotation / localScale；注意区分世界坐标（position）和本地坐标（localPosition）。"
