@@ -9,7 +9,7 @@
       "status": "formalized",
       "tags": ["unity-cli", "install", "setup", "terminal"],
       "updated": "2026-11-05",
-      "summary": "Unity CLI 是 Unity 官方推出的独立命令行工具，可在不装 Unity Hub 的情况下从终端安装 Editor、增删模块、创建/打开项目，适合 CI 与自动化。Windows 用一条 PowerShell 命令安装，装完 unity --version 验证即可。"
+      "summary": "Unity CLI 是 Unity 官方推出的独立命令行工具，可在不装 Unity Hub 的情况下从终端安装 Editor、增删模块、创建/打开项目，适合 CI 与自动化。Windows 用一条 PowerShell 命令安装，装完 `unity --version` 验证即可。"
     }
   ]
 }

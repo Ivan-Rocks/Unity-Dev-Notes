@@ -48,7 +48,7 @@
 }
 ```
 
-**维护方式**：`index.json` 由脚本/插件从各 `.md` 自动生成，不手写。生成规则：`path` = 相对 `notes/` 的路径，`summary` 取正文 `## Summary` 的首段（Summary 只在正文存在，frontmatter 不冗余存，避免两处漂移）。现在只有一篇笔记时手写了一份样例，规则定死后改为脚本生成。
+**维护方式**：`index.json` 由仓库脚本 `tools/vault.ps1 index`（或 `post` 内部调用）从各 `.md` 自动生成，不手写。生成规则：`path` = 相对 `notes/` 的路径，`summary` 取正文 `## Summary` 的首段（Summary 只在正文存在，frontmatter 不冗余存，避免两处漂移）。遇到冲突「regenerate，不 merge」——整份重建，不手动解决 index 冲突。
 
 ## 4. 检索策略（读）
 
@@ -89,8 +89,8 @@ Unity 已提供面向 AI agent 的官方 plugin 与 skills 仓库：
 
 ## 9. Roadmap（非现在实现，仅记录顺序）
 
-1. **P0**：跑通「DSH 生成草稿 → 人工 PR → formalized」（本仓库已就绪）。
-2. **P1**：脚本生成 `index.json` + CI 校验 frontmatter。
+1. **P0**：跑通「DSH 生成草稿 → 人工 PR → formalized」——已落地 `tools/vault.ps1`（sync / index / validate / post）+ 技能 `posting-vault-notes`。
+2. **P1**：CI 校验 frontmatter（用 `note.schema.json`）+ `post` 用 `gh pr create` 自动开 PR。
 3. **P2**：DSH 插件实现「读」——index 检索 + 全文回填。
 4. **P3**：DSH 插件实现「写」——bug 解决后主动提议建 note，开分支 + PR。
 5. **P4**：维护助手——定期扫描重复/过时/缺来源，产出建议 PR。

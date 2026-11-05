@@ -7,6 +7,7 @@ BNU 实验室的 Unity 开发知识库（Knowledge Vault）。用「笔记 + 契
 - `docs/` — 设计架构文档 + 机器可读契约（contracts），是「人 + AI」共同遵守的规范
 - `notes/` — Unity 开发笔记本体（知识库），按类别（category）分目录
 - `docs/templates/` — 笔记模板（bug / knowledge / how-to / snippet）
+- `tools/vault.ps1` — git 自动化（sync / index / validate / post）
 
 ## 快速开始：用 DSH 生成一篇笔记
 
@@ -20,6 +21,17 @@ DSH 会按模板产出草稿（`status: draft`），你提交 PR 审核后合并
 2. 按对应模板写 `notes/<category>/<YYYY-MM-DD>-<slug>.md`。
 3. `status` 设为 `draft`，提交 PR，标题形如 `note: 安装 Unity CLI`。
 4. 按 [docs/note-spec.md](docs/note-spec.md) 的 checklist 审核，通过后把 `status` 改为 `formalized` 再合并。
+
+## 自动化工具（P0）
+
+仓库自带 [tools/vault.ps1](tools/vault.ps1)，把「同步 → 分支 → 写笔记 → 重建索引 → 提交 → push」合成一条命令，解决「忘了 pull / 直推 main / 索引滞后」：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/vault.ps1 post -File <草稿.md>
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/vault.ps1 sync
+```
+
+用 DSH 发笔记：先按 `docs/templates/` 生成草稿，再 `post` 发布（自动开 `note/<id>` 分支 + 重建 `notes/index.json` + push）。完整用法见技能 `posting-vault-notes`。
 
 ## 规范入口
 
